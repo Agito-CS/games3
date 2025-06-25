@@ -56,12 +56,21 @@
             color: #333;
         }
 
+        /* Power-up countdown display (repurposed for shovel or other timed power-ups) */
+        .powerup-countdown-display {
+            font-size: 1rem;
+            color: #007bff; /* Blue for power-up timer */
+            font-weight: bold;
+            margin-left: 20px; /* Space from score */
+            display: none; /* Hidden by default */
+        }
+
         .countdown-display {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 8rem; /* Large font size for countdown */
+            font-size: 8rem; /* Large font size for main countdown */
             font-weight: bold;
             color: rgba(0, 0, 0, 0.7);
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
@@ -201,6 +210,7 @@
         <div id="gameContainer" class="game-container" style="display: none;">
             <div class="game-info">
                 <span>Vasos pegos: <span id="score">0</span></span>
+                <span id="powerUpCountdownDisplay" class="powerup-countdown-display"></span>
             </div>
             <canvas id="gameCanvas"></canvas>
             <div id="countdown" class="countdown-display">3</div>
@@ -217,95 +227,126 @@
         // Get info elements
         const scoreDisplay = document.getElementById('score');
         const countdownDisplay = document.getElementById('countdown');
+        const powerUpCountdownDisplay = document.getElementById('powerUpCountdownDisplay'); // Renamed from shovelCountdownDisplay
         const gameMessage = document.getElementById('gameMessage');
         const restartButton = document.getElementById('restartButton');
 
         // New elements for character selection
         const gameContainer = document.getElementById('gameContainer');
-        const gameInfo = document.querySelector('.game-info'); // Select it here
+        const gameInfo = document.querySelector('.game-info');
         const characterSelectionScreen = document.getElementById('characterSelectionScreen');
         const characterButtonsContainer = document.getElementById('characterButtons');
 
         // Game settings
-        const boardSize = 600; // Large board
+        const boardSize = 600;
         canvas.width = boardSize;
         canvas.height = boardSize;
 
-        const cellSize = 20; // Size of each grid cell for movement
-        const characterSize = cellSize; // Álvaro's size, now equal to cell size for perfect grid movement
-        const toiletSize = cellSize * 2; // Toilet size
-        const poopSize = cellSize; // Poop emoji size, also equal to cell size
+        const cellSize = 20;
+        const characterSize = cellSize;
+        const toiletSize = cellSize * 2;
+        const poopSize = cellSize;
+        const itemSize = cellSize; // Generic size for power-up items
 
         // Global character data with updated emojis and added Érico
         const characterData = [
-            { name: 'Álvaro', emoji: '🏃‍♂️' },
-            { name: 'Guilherme', emoji: '🥁' }, // Bateria
-            { name: 'Franciela', emoji: '👷‍♀️' }, // Engenheira
-            { name: 'Pandora', emoji: '🐼' },
-            { name: 'Newton', emoji: '😐' }, // Cara de tédio
-            { name: 'Larissa', emoji: '🎾' }, // Raquete de paddle/tênis
-            { name: 'Érico', emoji: '👨‍🔬' } // Cientista
+            { name: 'Álvaro', emoji: '🏃‍♂️', powerUp: 'spawnToilet' }, // Álvaro agora tem o poder de spawnar vaso
+            { name: 'Guilherme', emoji: '🥁', powerUp: 'battery' }, // Guilherme tem a bateria
+            { name: 'Franciela', emoji: '👷‍♀️', powerUp: 'animals' }, // Franciela tem o poder de animais
+            { name: 'Pandora', emoji: '🐼', powerUp: 'areaClean' }, // Pandora tem o poder de área
+            { name: 'Newton', emoji: '😐', powerUp: 'partyEmojis' }, // Newton tem o poder de emojis de festa
+            { name: 'Larissa', emoji: '🎾', powerUp: 'tennisBalls' }, // Larissa tem as bolas de tênis
+            { name: 'Érico', emoji: '👨‍🔬', powerUp: 'speed' }, // Érico tem o poder de velocidade
+            { name: 'Ana', emoji: '📚', powerUp: 'clearLastPoops' } // Ana tem o poder de limpar os últimos cocôs
         ];
 
-        const poopEmoji = '💩'; // Poop emoji remains constant
-        const toiletEmoji = '🚽'; // Toilet emoji remains constant
+        // Global emoji constants
+        const poopEmoji = '💩';
+        const toiletEmoji = '🚽';
+        const shovelEmoji = '⛏️'; // Corrected shovel emoji (no longer a power-up for anyone, but kept if needed)
+        const batteryEmoji = '🔋';
+        const tennisBallEmoji = '🎾'; // Emoji for individual tennis balls and Larissa's item
+        const dogEmoji = '🐕‍🦺'; // Dog emoji for Franciela
+        const catEmoji = '🐈‍⬛'; // Cat emoji for Franciela
+        const partyEmoji = '🎉'; // Party emoji for Newton
+        const cookieEmoji = '🍪'; // Cookie for Pandora
 
-        let selectedCharacter = null; // Will store the chosen character object { name, emoji }
+        // Game state variables
+        let selectedCharacter = null;
 
         let alvaro = {
-            x: 0, // Initialized in startGame
-            y: 0, // Initialized in startGame
-            dx: 0,
-            dy: 0,
-            baseMoveDelay: 250, // Initial delay in ms between Álvaro's steps (slower start)
-            moveDelay: 250,      // Current delay
-            minMoveDelay: 50,    // Fastest speed limit for Álvaro (50ms = 20 steps/sec)
-            lastX: 0, // Store previous grid position for poop
-            lastY: 0  // Store previous grid position for poop
+            x: 0, y: 0, dx: 0, dy: 0,
+            baseMoveDelay: 250, moveDelay: 250, minMoveDelay: 50,
+            lastX: 0, lastY: 0,
+            hasShovel: false, // Legacy, not used by Newton anymore but kept if another char gets it
+            powerUpCountdown: 0, // Generic countdown for timed power-ups
+            powerUpCountdownInterval: null, // Interval for generic power-up countdown
+            isPandoraPowerActive: false // Pandora's area clean power state
         };
 
-        let toilet = {
-            x: 0, // Initialized in startGame
-            y: 0, // Initialized in startGame
-            dx: 0, // Direction x
-            dy: 0, // Direction y
-            speed: cellSize / 4 // Initial toilet speed, moves slower than Álvaro
-        };
+        let toilets = []; // Changed to an array for Álvaro's power-up
+
+        // Power-up item states (only spawned if applicable to selected character)
+        let batteryItem = { x: 0, y: 0, spawned: false };
+        let tennisBallItem = { x: 0, y: 0, spawned: false };
+        let cookieItem = { x: 0, y: 0, spawned: false }; // For Pandora
+
+        // Active power-up effects
+        let activeTennisBalls = [];
+        let activeAnimals = [];
+        let activePartyEmojis = [];
 
         let score = 0;
         let countdown = 3;
         let gameOver = false;
-        let poops = []; // Array to store poop emoji positions
-        let toiletMoveInterval; // Interval for toilet's random movement
-        let countdownInterval; // Interval for countdown timer
-        let alvaroMoveIntervalId; // Interval ID for Álvaro's continuous movement
-        let gameLoopId; // requestAnimationFrame ID for drawing loop
+        let poops = [];
+
+        // Interval/Timeout IDs - Explicitly initialize to null
+        let toiletMoveInterval = null;
+        let countdownInterval = null;
+        let alvaroMoveIntervalId = null;
+        let gameLoopId = null;
+        let tennisBallClearTimeoutId = null;
+        let animalClearTimeoutId = null;
+        let partyEmojiClearTimeoutId = null;
+
+        // Constants for power-ups
+        const ERICO_SPEED_MULTIPLIER = 0.33; // Érico is 3x faster, so moveDelay is 1/3
+        const BATTERY_CLEAR_RADIUS = 10 * cellSize;
+        const PANDORA_AREA_CLEAN_RADIUS = 2 * cellSize; // 40px radius around touched poop
+        const TENNIS_BALL_ACTIVE_DURATION_SECONDS = 2;
+        const NUM_TENNIS_BALLS_SPAWN = 10;
+        const TENNIS_BALL_SPEED = cellSize / 2;
+
+        const ANIMAL_ACTIVE_DURATION_SECONDS = 5;
+        const ANIMAL_SPEED = cellSize / 3;
+
+        const PARTY_EMOJI_DURATION_SECONDS = 2;
+        const NUM_PARTY_EMOJIS_SPAWN = 5;
+        const PARTY_EMOJI_SPEED = cellSize;
 
 
         // Function to set toilet's new random direction
-        function setRandomToiletDirection() {
+        function setRandomToiletDirection(toiletObj) {
             const directions = [-1, 0, 1];
-            toilet.dx = directions[Math.floor(Math.random() * directions.length)];
-            toilet.dy = directions[Math.floor(Math.random() * directions.length)];
+            toiletObj.dx = directions[Math.floor(Math.random() * directions.length)];
+            toiletObj.dy = directions[Math.floor(Math.random() * directions.length)];
         }
 
-        // Moves Álvaro based on his current dx/dy and drops poop if countdown is zero
+        // Moves Álvaro and drops poop if countdown is zero
         function moveAlvaro() {
             if (gameOver) return;
 
-            // Store the exact previous position for poop placement
             alvaro.lastX = alvaro.x;
             alvaro.lastY = alvaro.y;
 
-            // Move Álvaro by one cell
             alvaro.x += alvaro.dx;
             alvaro.y += alvaro.dy;
 
-            // Keep Álvaro within bounds
             alvaro.x = Math.max(0, Math.min(alvaro.x, boardSize - characterSize));
             alvaro.y = Math.max(0, Math.min(alvaro.y, boardSize - characterSize));
 
-            // If Álvaro hits a boundary and tries to move further, stop his movement in that direction.
+            // Stop Álvaro if he hits a boundary
             if ((alvaro.x === 0 && alvaro.dx < 0) || (alvaro.x === boardSize - characterSize && alvaro.dx > 0)) {
                 alvaro.dx = 0;
             }
@@ -313,17 +354,15 @@
                 alvaro.dy = 0;
             }
 
-            // If countdown is 0 and Álvaro is currently moving, Álvaro leaves poop emojis at the *just vacated* cell
+            // Drop poop if countdown is 0 and Álvaro is moving
             if (countdown <= 0 && (alvaro.dx !== 0 || alvaro.dy !== 0)) {
-                // Calculate poop position to be centered on Álvaro's previous exact grid location
                 const poopX = alvaro.lastX + (characterSize - poopSize) / 2;
                 const poopY = alvaro.lastY + (characterSize - poopSize) / 2;
                 poops.push({ x: poopX, y: poopY });
             }
         }
 
-
-        // Initialize game (sets up character selection)
+        // Sets up the character selection screen
         function initializeGame() {
             gameOver = false;
             score = 0;
@@ -331,27 +370,44 @@
             countdown = 3;
             countdownDisplay.textContent = countdown;
             poops = [];
+            alvaro.hasShovel = false; // Legacy, not used by Newton anymore
+            alvaro.powerUpCountdown = 0;
+            alvaro.isPandoraPowerActive = false; // Reset Pandora power
+
+            batteryItem.spawned = false;
+            tennisBallItem.spawned = false;
+            cookieItem.spawned = false; // Reset cookie item
+            activeTennisBalls = [];
+            activeAnimals = [];
+            activePartyEmojis = [];
+            toilets = []; // Clear all toilets for new game
 
             gameMessage.style.display = 'none';
             restartButton.style.display = 'none';
-            countdownDisplay.style.display = 'none'; // Hide countdown initially
+            countdownDisplay.style.display = 'none';
+            powerUpCountdownDisplay.style.display = 'none';
 
-            // Hide main game container, show character selection
             gameContainer.style.display = 'none';
-            characterSelectionScreen.style.display = 'flex'; // Show the selection screen
+            characterSelectionScreen.style.display = 'flex';
 
-            // Clear existing intervals to prevent multiple running instances
-            clearInterval(toiletMoveInterval);
-            clearInterval(countdownInterval);
-            clearInterval(alvaroMoveIntervalId);
-            cancelAnimationFrame(gameLoopId);
+            // Clear all intervals/timeouts to ensure a clean start
+            if (toiletMoveInterval !== null) clearInterval(toiletMoveInterval);
+            if (countdownInterval !== null) clearInterval(countdownInterval);
+            if (alvaroMoveIntervalId !== null) clearInterval(alvaroMoveIntervalId);
+            if (gameLoopId !== null) cancelAnimationFrame(gameLoopId);
+            // No shovelTimeoutId anymore, but kept generic powerUpCountdownInterval for shovel-like
+            if (alvaro.powerUpCountdownInterval !== null) clearInterval(alvaro.powerUpCountdownInterval);
+            if (tennisBallClearTimeoutId !== null) clearTimeout(tennisBallClearTimeoutId);
+            if (animalClearTimeoutId !== null) clearTimeout(animalClearTimeoutId);
+            if (partyEmojiClearTimeoutId !== null) clearTimeout(partyEmojiClearTimeoutId);
 
-            displayCharacterSelection(); // Populate and display character buttons
+
+            displayCharacterSelection();
         }
 
-        // Function to populate and display character selection
+        // Populates and displays character selection buttons
         function displayCharacterSelection() {
-            characterButtonsContainer.innerHTML = ''; // Clear previous buttons
+            characterButtonsContainer.innerHTML = '';
             characterData.forEach(char => {
                 const button = document.createElement('button');
                 button.className = 'character-button';
@@ -361,74 +417,143 @@
             });
         }
 
-        // Function to handle character selection and start the game
+        // Handles character selection and starts the game
         function selectCharacter(char) {
-            selectedCharacter = char; // Set the chosen character
-            startGame(); // Start the actual game
+            selectedCharacter = char;
+            startGame();
         }
 
-        // Function to start the actual game after character selection
+        // Starts the main game loop and intervals
         function startGame() {
-            // Hide character selection, show main game container
             characterSelectionScreen.style.display = 'none';
-            gameContainer.style.display = 'flex'; // Show the game container
-            canvas.style.display = 'block'; // Make sure canvas is visible
-            gameInfo.style.display = 'flex'; // Make sure game info is visible
-            countdownDisplay.style.display = 'block'; // Show countdown now
+            gameContainer.style.display = 'flex';
+            canvas.style.display = 'block';
+            gameInfo.style.display = 'flex';
+            countdownDisplay.style.display = 'block';
 
             // Set Álvaro's initial state
             alvaro.x = boardSize / 2 - characterSize / 2;
             alvaro.y = boardSize / 2 - characterSize / 2;
-            alvaro.moveDelay = alvaro.baseMoveDelay; // Reset Álvaro's speed
-            alvaro.dx = cellSize; // Start Álvaro moving right by default
+            alvaro.moveDelay = alvaro.baseMoveDelay;
+            alvaro.dx = cellSize;
             alvaro.dy = 0;
-            alvaro.lastX = alvaro.x; // Set initial last position
+            alvaro.lastX = alvaro.x;
             alvaro.lastY = alvaro.y;
+            alvaro.hasShovel = false;
+            alvaro.powerUpCountdown = 0;
+            alvaro.isPandoraPowerActive = false; // Reset Pandora power
 
-            // Set toilet's initial state
-            toilet.x = Math.random() * (boardSize - toiletSize);
-            toilet.y = Math.random() * (boardSize - toiletSize);
-            toilet.speed = cellSize / 4; // Reset toilet speed
+            batteryItem.spawned = false;
+            tennisBallItem.spawned = false;
+            cookieItem.spawned = false; // Reset cookie item
+            activeTennisBalls = [];
+            activeAnimals = [];
+            activePartyEmojis = [];
+            toilets = []; // Start with a fresh array of toilets
 
-            // Start new intervals
-            toiletMoveInterval = setInterval(moveToiletRandomly, 500); // Toilet changes direction every 0.5 seconds
-            countdownInterval = setInterval(updateCountdown, 1000); // Countdown updates every 1 second
-            alvaroMoveIntervalId = setInterval(moveAlvaro, alvaro.moveDelay); // Start Álvaro's movement
+            // Initialize the first toilet
+            let initialToilet = {
+                x: Math.random() * (boardSize - toiletSize),
+                y: Math.random() * (boardSize - toiletSize),
+                dx: 0,
+                dy: 0,
+                speed: cellSize / 4
+            };
+            setRandomToiletDirection(initialToilet);
+            toilets.push(initialToilet);
 
-            gameLoopId = requestAnimationFrame(gameLoop); // Start the drawing loop
-        }
 
-        // Draw everything on the canvas
-        function draw() {
-            ctx.clearRect(0, 0, boardSize, boardSize); // Clear the canvas
-
-            if (selectedCharacter) {
-                // Draw Character Emoji
-                ctx.font = `${characterSize}px Arial`;
-                ctx.fillText(selectedCharacter.emoji, alvaro.x, alvaro.y + characterSize * 0.85); // Adjust for emoji baseline
-
-                // Draw Character's Name
-                ctx.font = `${cellSize * 0.8}px Inter`; // Smaller font for name
-                ctx.textAlign = 'center'; // Center the text
-                ctx.fillStyle = '#333'; // Dark color for text
-                // Position name below character, adjusted by half of character width for centering
-                ctx.fillText(selectedCharacter.name, alvaro.x + characterSize / 2, alvaro.y + characterSize + 10);
-                ctx.textAlign = 'start'; // Reset text alignment for other drawings
+            // Adjust Álvaro's speed if Érico is selected
+            if (selectedCharacter.powerUp === 'speed') {
+                alvaro.moveDelay = alvaro.baseMoveDelay * ERICO_SPEED_MULTIPLIER;
+            } else {
+                alvaro.moveDelay = alvaro.baseMoveDelay; // Reset for other characters
             }
 
+            toiletMoveInterval = setInterval(updateToiletsRandomly, 500); // Updated to handle array
+            countdownInterval = setInterval(updateCountdown, 1000);
+            alvaroMoveIntervalId = setInterval(moveAlvaro, alvaro.moveDelay);
 
-            // Draw Toilet
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        // Draws all game elements on the canvas
+        function draw() {
+            ctx.clearRect(0, 0, boardSize, boardSize);
+
+            // Draw Character
+            if (selectedCharacter) {
+                // Always draw the character's base emoji
+                ctx.font = `${characterSize}px Arial`;
+                ctx.fillText(selectedCharacter.emoji, alvaro.x, alvaro.y + characterSize * 0.85);
+
+                // Draw power-up icon if character has it (e.g., shovel effect from Newton's old power-up, if implemented)
+                // Current Newton power-up is partyEmojis, not a carried item.
+                // This section might be removed or repurposed if no characters carry items.
+                if (alvaro.hasShovel && selectedCharacter.powerUp === 'shovel') { // Still here if we re-implement shovel for someone
+                    ctx.font = `${itemSize * 0.8}px Arial`;
+                    ctx.fillText(shovelEmoji, alvaro.x + characterSize - (itemSize * 0.8), alvaro.y);
+                }
+
+
+                ctx.font = `${cellSize * 0.8}px Inter`;
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#333';
+                ctx.fillText(selectedCharacter.name, alvaro.x + characterSize / 2, alvaro.y + characterSize + 10);
+                ctx.textAlign = 'start';
+            }
+
+            // Draw Battery item if spawned on board
+            if (batteryItem.spawned) {
+                ctx.font = `${itemSize}px Arial`;
+                ctx.fillText(batteryEmoji, batteryItem.x, batteryItem.y + itemSize * 0.85);
+            }
+
+            // Draw Tennis Ball Item (the one Larissa picks up)
+            if (tennisBallItem.spawned) {
+                ctx.font = `${itemSize}px Arial`;
+                ctx.fillText(tennisBallEmoji, tennisBallItem.x, tennisBallItem.y + itemSize * 0.85);
+            }
+
+            // Draw Cookie item if spawned on board
+            if (cookieItem.spawned) {
+                ctx.font = `${itemSize}px Arial`;
+                ctx.fillText(cookieEmoji, cookieItem.x, cookieItem.y + itemSize * 0.85);
+            }
+
+            // Draw active Tennis Balls
+            ctx.font = `${poopSize * 0.8}px Arial`; // Smaller than poops
+            activeTennisBalls.forEach(ball => {
+                ctx.fillText(tennisBallEmoji, ball.x, ball.y + poopSize * 0.85);
+            });
+
+            // Draw active Animals (Franciela)
+            ctx.font = `${itemSize}px Arial`;
+            activeAnimals.forEach(animal => {
+                ctx.fillText(animal.emoji, animal.x, animal.y + itemSize * 0.85);
+            });
+
+            // Draw active Party Emojis (Newton)
+            ctx.font = `${itemSize}px Arial`;
+            activePartyEmojis.forEach(pEmoji => {
+                ctx.fillText(partyEmoji, pEmoji.x, pEmoji.y + itemSize * 0.85);
+            });
+
+
+            // Draw all Toilets
             ctx.font = `${toiletSize}px Arial`;
-            ctx.fillText(toiletEmoji, toilet.x, toilet.y + toiletSize * 0.85); // Adjust for emoji baseline
+            toilets.forEach(t => {
+                ctx.fillText(toiletEmoji, t.x, t.y + toiletSize * 0.85);
+            });
 
             // Draw Poops
             ctx.font = `${poopSize}px Arial`;
             poops.forEach(p => {
-                ctx.fillText(poopEmoji, p.x, p.y + poopSize * 0.85); // Adjust for emoji baseline
+                ctx.fillText(poopEmoji, p.x, p.y + poopSize * 0.85);
             });
         }
 
-        // Update countdown
+        // Updates main countdown timer
         function updateCountdown() {
             if (gameOver) return;
 
@@ -436,92 +561,372 @@
             countdownDisplay.textContent = countdown;
 
             if (countdown <= 0) {
-                // If countdown is zero, hide countdown display
                 countdownDisplay.style.display = 'none';
             }
         }
 
-        // Move toilet randomly
-        function moveToiletRandomly() {
+        // Function to update generic power-up countdown display
+        function updatePowerUpCountdown() {
             if (gameOver) return;
 
-            // Move toilet based on its current direction
-            toilet.x += toilet.dx * toilet.speed;
-            toilet.y += toilet.dy * toilet.speed;
+            alvaro.powerUpCountdown--;
+            powerUpCountdownDisplay.textContent = `Poder: ${alvaro.powerUpCountdown}s`;
 
-            // Keep toilet within bounds and reverse direction if it hits a wall
-            if (toilet.x < 0 || toilet.x > boardSize - toiletSize) {
-                toilet.dx *= -1;
-                toilet.x = Math.max(0, Math.min(toilet.x, boardSize - toiletSize)); // Clamp to boundary
-                setRandomToiletDirection(); // Change direction again after hitting wall
-            }
-            if (toilet.y < 0 || toilet.y > boardSize - toiletSize) {
-                toilet.dy *= -1;
-                toilet.y = Math.max(0, Math.min(toilet.y, boardSize - toiletSize)); // Clamp to boundary
-                setRandomToiletDirection(); // Change direction again after hitting wall
+            if (alvaro.powerUpCountdown <= 0) {
+                clearInterval(alvaro.powerUpCountdownInterval);
+                powerUpCountdownDisplay.style.display = 'none';
             }
         }
 
-        // Update game state (primarily for collisions, drawing is separate)
+        // Moves all active toilets randomly
+        function updateToiletsRandomly() {
+            if (gameOver) return;
+
+            toilets.forEach(t => {
+                t.x += t.dx * t.speed;
+                t.y += t.dy * t.speed;
+
+                if (t.x < 0 || t.x > boardSize - toiletSize) {
+                    t.dx *= -1;
+                    t.x = Math.max(0, Math.min(t.x, boardSize - toiletSize));
+                    setRandomToiletDirection(t); // Change direction again after hitting wall
+                }
+                if (t.y < 0 || t.y > boardSize - toiletSize) {
+                    t.dy *= -1;
+                    t.y = Math.max(0, Math.min(t.y, boardSize - toiletSize));
+                    setRandomToiletDirection(t); // Change direction again after hitting wall
+                }
+            });
+        }
+
+        // Function to spawn Franciela's animals
+        function spawnAnimals() {
+            activeAnimals = []; // Clear previous animals before spawning new ones
+            // Dog
+            activeAnimals.push({
+                x: Math.random() * (boardSize - itemSize),
+                y: Math.random() * (boardSize - itemSize),
+                dx: (Math.random() > 0.5 ? 1 : -1) * ANIMAL_SPEED, // Random initial direction
+                dy: (Math.random() > 0.5 ? 1 : -1) * ANIMAL_SPEED,
+                emoji: dogEmoji
+            });
+            // Cat
+            activeAnimals.push({
+                x: Math.random() * (boardSize - itemSize),
+                y: Math.random() * (boardSize - itemSize),
+                dx: (Math.random() > 0.5 ? 1 : -1) * ANIMAL_SPEED,
+                dy: (Math.random() > 0.5 ? 1 : -1) * ANIMAL_SPEED,
+                emoji: catEmoji
+            });
+
+            animalClearTimeoutId = setTimeout(() => {
+                activeAnimals = []; // Clear animals after duration
+            }, ANIMAL_ACTIVE_DURATION_SECONDS * 1000);
+        }
+
+        // Function to spawn Newton's party emojis
+        function spawnPartyEmojis() {
+            activePartyEmojis = []; // Clear previous party emojis
+            for (let i = 0; i < NUM_PARTY_EMOJIS_SPAWN; i++) {
+                // Emojis start from left, random vertical position, move right
+                activePartyEmojis.push({
+                    x: -itemSize, // Start off-screen left
+                    y: Math.random() * (boardSize - itemSize),
+                    dx: PARTY_EMOJI_SPEED,
+                    dy: (Math.random() - 0.5) * PARTY_EMOJI_SPEED * 0.5 // Slight vertical variation
+                });
+            }
+
+            partyEmojiClearTimeoutId = setTimeout(() => {
+                activePartyEmojis = []; // Clear party emojis after duration
+            }, PARTY_EMOJI_DURATION_SECONDS * 1000);
+        }
+
+        // Main game logic update (collisions, scoring, item spawning)
         function update() {
             if (gameOver) return;
 
-            // Collision detection: Álvaro and Toilet
-            if (alvaro.x < toilet.x + toiletSize &&
-                alvaro.x + characterSize > toilet.x &&
-                alvaro.y < toilet.y + toiletSize &&
-                alvaro.y + characterSize > toilet.y) {
-                // Collision!
-                score++;
-                scoreDisplay.textContent = score;
-                countdown = 3; // Reset countdown
-                countdownDisplay.textContent = countdown;
-                countdownDisplay.style.display = 'block'; // Show countdown again
-                // poops = []; // Poops no longer disappear when toilet is caught
+            // Update active tennis balls position and check collisions with poops
+            for (let i = activeTennisBalls.length - 1; i >= 0; i--) {
+                const ball = activeTennisBalls[i];
 
-                // Increase toilet speed (e.g., 10% faster per catch)
-                toilet.speed *= 1.1;
+                ball.x += ball.dx;
+                ball.y += ball.dy;
 
-                // Increase Álvaro's speed (reduce moveDelay)
-                alvaro.moveDelay = Math.max(alvaro.minMoveDelay, alvaro.moveDelay * 0.9);
-                clearInterval(alvaroMoveIntervalId); // Clear old interval
-                alvaroMoveIntervalId = setInterval(moveAlvaro, alvaro.moveDelay); // Start new interval with updated delay
+                // Bounce off walls
+                if (ball.x < 0 || ball.x > boardSize - itemSize) {
+                    ball.dx *= -1;
+                    ball.x = Math.max(0, Math.min(ball.x, boardSize - itemSize));
+                }
+                if (ball.y < 0 || ball.y > boardSize - itemSize) {
+                    ball.dy *= -1;
+                    ball.y = Math.max(0, Math.min(ball.y, boardSize - itemSize));
+                }
 
-                // Teleport toilet to a new random position
-                toilet.x = Math.random() * (boardSize - toiletSize);
-                toilet.y = Math.random() * (boardSize - toiletSize);
-                setRandomToiletDirection(); // Set a new random direction for the teleported toilet
+                // Check collision with poops
+                for (let j = poops.length - 1; j >= 0; j--) {
+                    const poop = poops[j];
+                    if (ball.x < poop.x + poopSize &&
+                        ball.x + itemSize > poop.x &&
+                        ball.y < poop.y + poopSize &&
+                        ball.y + itemSize > poop.y) {
+                        poops.splice(j, 1); // Remove poop
+                    }
+                }
             }
 
+            // Update active animals position and check collisions with poops
+            for (let i = activeAnimals.length - 1; i >= 0; i--) {
+                const animal = activeAnimals[i];
+
+                animal.x += animal.dx;
+                animal.y += animal.dy;
+
+                // Bounce off walls
+                if (animal.x < 0 || animal.x > boardSize - itemSize) {
+                    animal.dx *= -1;
+                    animal.x = Math.max(0, Math.min(animal.x, boardSize - itemSize));
+                }
+                if (animal.y < 0 || animal.y > boardSize - itemSize) {
+                    animal.dy *= -1;
+                    animal.y = Math.max(0, Math.min(animal.y, boardSize - itemSize));
+                }
+
+                // Check collision with poops
+                for (let j = poops.length - 1; j >= 0; j--) {
+                    const poop = poops[j];
+                    if (animal.x < poop.x + poopSize &&
+                        animal.x + itemSize > poop.x &&
+                        animal.y < poop.y + poopSize &&
+                        animal.y + itemSize > poop.y) {
+                        poops.splice(j, 1); // Remove poop
+                    }
+                }
+            }
+
+            // Update active party emojis position and check collisions with poops
+            for (let i = activePartyEmojis.length - 1; i >= 0; i--) {
+                const pEmoji = activePartyEmojis[i];
+
+                pEmoji.x += pEmoji.dx;
+                pEmoji.y += pEmoji.dy;
+
+                // Simple boundary check: remove if off-screen (or could bounce)
+                if (pEmoji.x > boardSize || pEmoji.x < -itemSize || pEmoji.y > boardSize || pEmoji.y < -itemSize) {
+                     activePartyEmojis.splice(i, 1); // Remove if off-screen
+                     continue; // Move to next iteration
+                }
+
+                // Check collision with poops
+                for (let j = poops.length - 1; j >= 0; j--) {
+                    const poop = poops[j];
+                    if (pEmoji.x < poop.x + poopSize &&
+                        pEmoji.x + itemSize > poop.x &&
+                        pEmoji.y < poop.y + poopSize &&
+                        pEmoji.y + itemSize > poop.y) {
+                        poops.splice(j, 1); // Remove poop
+                    }
+                }
+            }
+
+            // Collision detection: Álvaro and Toilets (loop through all active toilets)
+            for (let toiletIndex = toilets.length - 1; toiletIndex >= 0; toiletIndex--) {
+                const currentToilet = toilets[toiletIndex];
+
+                if (alvaro.x < currentToilet.x + toiletSize &&
+                    alvaro.x + characterSize > currentToilet.x &&
+                    alvaro.y < currentToilet.y + toiletSize &&
+                    alvaro.y + characterSize > currentToilet.y) {
+                    // Collision!
+                    score++;
+                    scoreDisplay.textContent = score;
+                    countdown = 3;
+                    countdownDisplay.textContent = countdown;
+                    countdownDisplay.style.display = 'block';
+
+                    currentToilet.speed *= 1.1; // Increase speed of the caught toilet
+                    alvaro.moveDelay = Math.max(alvaro.minMoveDelay, alvaro.moveDelay * 0.9);
+                    clearInterval(alvaroMoveIntervalId);
+                    alvaroMoveIntervalId = setInterval(moveAlvaro, alvaro.moveDelay);
+
+                    // Teleport the caught toilet to a new random position
+                    currentToilet.x = Math.random() * (boardSize - toiletSize);
+                    currentToilet.y = Math.random() * (boardSize - toiletSize);
+                    setRandomToiletDirection(currentToilet);
+
+                    // Power-up spawn/activation logic (every 5 vasos, or 10 for Álvaro's unique power)
+                    if (score > 0) {
+                        if (selectedCharacter.powerUp === 'spawnToilet' && score % 10 === 0) { // Álvaro's power
+                            let newToilet = {
+                                x: Math.random() * (boardSize - toiletSize),
+                                y: Math.random() * (boardSize - toiletSize),
+                                dx: 0,
+                                dy: 0,
+                                speed: cellSize / 4 // New toilets start at base speed
+                            };
+                            setRandomToiletDirection(newToilet);
+                            toilets.push(newToilet);
+                        } else if (score % 5 === 0) { // Other characters' power-ups every 5
+                            switch (selectedCharacter.powerUp) {
+                                case 'battery':
+                                    if (!batteryItem.spawned) {
+                                        batteryItem.x = Math.random() * (boardSize - itemSize);
+                                        batteryItem.y = Math.random() * (boardSize - itemSize);
+                                        batteryItem.spawned = true;
+                                    }
+                                    break;
+                                case 'tennisBalls':
+                                    if (!tennisBallItem.spawned) {
+                                        tennisBallItem.x = Math.random() * (boardSize - itemSize);
+                                        tennisBallItem.y = Math.random() * (boardSize - itemSize);
+                                        tennisBallItem.spawned = true;
+                                    }
+                                    break;
+                                case 'partyEmojis': // Newton's direct power-up
+                                    if (activePartyEmojis.length === 0) {
+                                        spawnPartyEmojis();
+                                    }
+                                    break;
+                                case 'animals': // Franciela's direct power-up
+                                    if (activeAnimals.length === 0) {
+                                        spawnAnimals();
+                                    }
+                                    break;
+                                case 'areaClean': // Pandora's power, spawns cookie
+                                    if (!cookieItem.spawned) {
+                                        cookieItem.x = Math.random() * (boardSize - itemSize);
+                                        cookieItem.y = Math.random() * (boardSize - itemSize);
+                                        cookieItem.spawned = true;
+                                    }
+                                    break;
+                                case 'clearLastPoops': // Ana's direct power-up
+                                    const poopsToRemove = Math.min(5, poops.length); // Ensure not to remove more than exist
+                                    poops.splice(poops.length - poopsToRemove, poopsToRemove);
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // Collision detection: Álvaro and Battery Item (only for Guilherme)
+            if (selectedCharacter && selectedCharacter.powerUp === 'battery' && batteryItem.spawned &&
+                alvaro.x < batteryItem.x + itemSize &&
+                alvaro.x + characterSize > batteryItem.x &&
+                alvaro.y < batteryItem.y + itemSize &&
+                alvaro.y + characterSize > batteryItem.y) {
+                // Álvaro (Guilherme) picked up the battery!
+                batteryItem.spawned = false;
+
+                const alvaroCenterX = alvaro.x + characterSize / 2;
+                const alvaroCenterY = alvaro.y + characterSize / 2;
+
+                poops = poops.filter(p => {
+                    const poopCenterX = p.x + poopSize / 2;
+                    const poopCenterY = p.y + poopSize / 2;
+                    const distance = Math.sqrt(
+                        Math.pow(alvaroCenterX - poopCenterX, 2) +
+                        Math.pow(alvaroCenterY - poopCenterY, 2)
+                    );
+                    return distance > BATTERY_CLEAR_RADIUS;
+                });
+            }
+
+            // Collision detection: Álvaro and Tennis Ball Item (only for Larissa)
+            if (selectedCharacter && selectedCharacter.powerUp === 'tennisBalls' && tennisBallItem.spawned &&
+                alvaro.x < tennisBallItem.x + itemSize &&
+                alvaro.x + characterSize > tennisBallItem.x &&
+                alvaro.y < tennisBallItem.y + itemSize &&
+                alvaro.y + characterSize > tennisBallItem.y) {
+                // Álvaro (Larissa) picked up the tennis ball item!
+                tennisBallItem.spawned = false; // Remove item from board
+                activeTennisBalls = []; // Clear any previous active balls
+
+                // Spawn NUM_TENNIS_BALLS_SPAWN tennis balls
+                for (let i = 0; i < NUM_TENNIS_BALLS_SPAWN; i++) {
+                    const angle = Math.random() * Math.PI * 2; // Random direction
+                    activeTennisBalls.push({
+                        x: alvaro.x + characterSize / 2 - itemSize / 2, // Start at Álvaro's center
+                        y: alvaro.y + characterSize / 2 - itemSize / 2,
+                        dx: Math.cos(angle) * TENNIS_BALL_SPEED,
+                        dy: Math.sin(angle) * TENNIS_BALL_SPEED,
+                    });
+                }
+                // Start a global timer to remove all balls after 2 seconds
+                clearTimeout(tennisBallClearTimeoutId);
+                tennisBallClearTimeoutId = setTimeout(() => {
+                    activeTennisBalls = []; // Clear all tennis balls
+                }, TENNIS_BALL_ACTIVE_DURATION_SECONDS * 1000);
+            }
+
+            // Collision detection: Álvaro and Cookie Item (only for Pandora)
+            if (selectedCharacter && selectedCharacter.powerUp === 'areaClean' && cookieItem.spawned &&
+                alvaro.x < cookieItem.x + itemSize &&
+                alvaro.x + characterSize > cookieItem.x &&
+                alvaro.y < cookieItem.y + itemSize &&
+                alvaro.y + characterSize > cookieItem.y) {
+                // Álvaro (Pandora) picked up the cookie!
+                cookieItem.spawned = false;
+                alvaro.isPandoraPowerActive = true; // Activate Pandora's "eating" mode
+            }
+
+
             // Collision detection: Álvaro and Poop
-            for (let i = 0; i < poops.length; i++) {
+            for (let i = poops.length - 1; i >= 0; i--) {
                 const p = poops[i];
                 if (alvaro.x < p.x + poopSize &&
                     alvaro.x + characterSize > p.x &&
                     alvaro.y < p.y + poopSize &&
                     alvaro.y + characterSize > p.y) {
-                    // Collision with poop! Game Over
-                    endGame("PIRIRI WINS");
-                    break;
+                    // Collision with poop!
+                    if (selectedCharacter && selectedCharacter.powerUp === 'areaClean' && alvaro.isPandoraPowerActive) {
+                        // Pandora's power: eat current poop and surrounding poops
+                        const eatenPoopX = p.x;
+                        const eatenPoopY = p.y;
+                        poops.splice(i, 1); // Remove the touched poop
+
+                        // Remove other poops within radius
+                        poops = poops.filter(otherPoop => {
+                            const otherPoopCenterX = otherPoop.x + poopSize / 2;
+                            const otherPoopCenterY = otherPoop.y + poopSize / 2;
+                            const distance = Math.sqrt(
+                                Math.pow(eatenPoopX + poopSize / 2 - otherPoopCenterX, 2) +
+                                Math.pow(eatenPoopY + poopSize / 2 - otherPoopCenterY, 2)
+                            );
+                            return distance > PANDORA_AREA_CLEAN_RADIUS;
+                        });
+                        alvaro.isPandoraPowerActive = false; // Power used, deactivate
+                    } else {
+                        // Game Over if no special cleaning power active
+                        endGame("PIRIRI WINS");
+                        break;
+                    }
                 }
             }
         }
 
-        // End game function
+        // Ends the game and displays message
         function endGame(message) {
             gameOver = true;
-            clearInterval(toiletMoveInterval);
-            clearInterval(countdownInterval);
-            clearInterval(alvaroMoveIntervalId); // Stop Álvaro's movement interval
-            cancelAnimationFrame(gameLoopId); // Stop the drawing loop
+            if (toiletMoveInterval !== null) clearInterval(toiletMoveInterval);
+            if (countdownInterval !== null) clearInterval(countdownInterval);
+            if (alvaroMoveIntervalId !== null) clearInterval(alvaroMoveIntervalId);
+            if (gameLoopId !== null) cancelAnimationFrame(gameLoopId);
+            if (alvaro.powerUpCountdownInterval !== null) clearInterval(alvaro.powerUpCountdownInterval); // Clear generic power-up countdown
+            if (tennisBallClearTimeoutId !== null) clearTimeout(tennisBallClearTimeoutId);
+            if (animalClearTimeoutId !== null) clearTimeout(animalClearTimeoutId);
+            if (partyEmojiClearTimeoutId !== null) clearTimeout(partyEmojiClearTimeoutId);
+
 
             gameMessage.textContent = message;
             gameMessage.style.display = 'block';
             restartButton.style.display = 'block';
-            countdownDisplay.style.display = 'none'; // Hide countdown at game over
+            countdownDisplay.style.display = 'none';
+            powerUpCountdownDisplay.style.display = 'none';
         }
 
-        // Main game loop (for drawing and general updates like collisions)
+        // Main game drawing loop
         function gameLoop() {
             update();
             draw();
@@ -530,43 +935,41 @@
             }
         }
 
-        // Event listener for keyboard input
+        // Keyboard input for Álvaro's movement
         document.addEventListener('keydown', (e) => {
             if (gameOver) return;
 
-            // Change direction based on key, prevent immediate 180-degree turn
-            // Álvaro's speed is cellSize per step
             switch (e.key) {
                 case 'ArrowUp':
-                    if (alvaro.dy === cellSize) return; // Prevent turning 180 degrees
+                    if (alvaro.dy === cellSize) return;
                     alvaro.dy = -cellSize;
                     alvaro.dx = 0;
                     break;
                 case 'ArrowDown':
-                    if (alvaro.dy === -cellSize) return; // Prevent turning 180 degrees
+                    if (alvaro.dy === -cellSize) return;
                     alvaro.dy = cellSize;
                     alvaro.dx = 0;
                     break;
                 case 'ArrowLeft':
-                    if (alvaro.dx === cellSize) return; // Prevent turning 180 degrees
+                    if (alvaro.dx === cellSize) return;
                     alvaro.dx = -cellSize;
                     alvaro.dy = 0;
                     break;
                 case 'ArrowRight':
-                    if (alvaro.dx === -cellSize) return; // Prevent turning 180 degrees
+                    if (alvaro.dx === -cellSize) return;
                     alvaro.dx = cellSize;
                     alvaro.dy = 0;
                     break;
             }
         });
 
-        // Restart button event listener: goes back to character selection
+        // Restart button event listener
         restartButton.addEventListener('click', initializeGame);
 
-        // Initial setup on window load: starts the character selection process
+        // Initial setup on window load
         window.onload = function() {
             initializeGame();
-            setRandomToiletDirection(); // Set initial direction for the toilet (toilet data is always present)
+            // No need to setRandomToiletDirection here, it's called in startGame after character selection
         };
     </script>
 </body>
