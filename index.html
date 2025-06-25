@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Álvaro e o Vaso Sanitário</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling if canvas is slightly larger */
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            position: relative; /* For countdown positioning */
+        }
+
+        canvas {
+            background-color: #e0f2f7; /* Light blue background for the board */
+            border: 5px solid #a7d9ed;
+            border-radius: 15px;
+            display: block;
+            touch-action: none; /* Prevent browser default touch actions */
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 800px; /* Match canvas max-width */
+            margin-bottom: 15px;
+            font-size: 1.25rem; /* text-xl */
+            font-weight: bold;
+            color: #333;
+        }
+
+        .countdown-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem; /* Large font size for countdown */
+            font-weight: bold;
+            color: rgba(0, 0, 0, 0.7);
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            pointer-events: none; /* Allow clicks to pass through */
+        }
+
+        .game-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem; /* text-5xl */
+            font-weight: bold;
+            color: #d32f2f; /* Red color for game over */
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px 40px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            z-index: 20;
+            display: none; /* Hidden by default */
+        }
+
+        .restart-button {
+            margin-top: 20px;
+            padding: 12px 25px;
+            background: linear-gradient(145deg, #4CAF50, #388E3C);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: none; /* Hidden by default */
+        }
+
+        .restart-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 10px;
+                border-radius: 10px;
+            }
+            canvas {
+                border-width: 3px;
+                border-radius: 10px;
+            }
+            .game-info {
+                font-size: 1rem;
+                margin-bottom: 10px;
+            }
+            .countdown-display {
+                font-size: 5rem;
+            }
+            .game-message {
+                font-size: 2.5rem;
+                padding: 15px 30px;
+            }
+            .restart-button {
+                padding: 10px 20px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-info">
+            <span>Vasos pegos: <span id="score">0</span></span>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="countdown" class="countdown-display">3</div>
+        <div id="gameMessage" class="game-message"></div>
+        <button id="restartButton" class="restart-button">Jogar Novamente</button>
+    </div>
+
+    <script>
+        // Get canvas and its context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Get info elements
+        const scoreDisplay = document.getElementById('score');
+        const countdownDisplay = document.getElementById('countdown');
+        const gameMessage = document.getElementById('gameMessage');
+        const restartButton = document.getElementById('restartButton');
+
+        // Game settings
+        const boardSize = 600; // Large board
+        canvas.width = boardSize;
+        canvas.height = boardSize;
+
+        const cellSize = 20; // Size of each grid cell for movement
+        const characterSize = cellSize; // Álvaro's size, now equal to cell size for perfect grid movement
+        const toiletSize = cellSize * 2; // Toilet size
+        const poopSize = cellSize; // Poop emoji size, also equal to cell size
+
+        let alvaro = {
+            x: boardSize / 2 - characterSize / 2,
+            y: boardSize / 2 - characterSize / 2,
+            dx: 0,
+            dy: 0,
+            baseMoveDelay: 250, // Initial delay in ms between Álvaro's steps (slower start)
+            moveDelay: 250,      // Current delay
+            minMoveDelay: 50,    // Fastest speed limit for Álvaro (50ms = 20 steps/sec)
+            lastX: 0, // Store previous grid position for poop
+            lastY: 0  // Store previous grid position for poop
+        };
+
+        let toilet = {
+            x: Math.random() * (boardSize - toiletSize),
+            y: Math.random() * (boardSize - toiletSize),
+            dx: 0, // Direction x
+            dy: 0, // Direction y
+            speed: cellSize / 4 // Initial toilet speed, moves slower than Álvaro
+        };
+
+        let score = 0;
+        let countdown = 3;
+        let gameOver = false;
+        let poops = []; // Array to store poop emoji positions
+        let toiletMoveInterval; // Interval for toilet's random movement
+        let countdownInterval; // Interval for countdown timer
+        let alvaroMoveIntervalId; // Interval ID for Álvaro's continuous movement
+        let gameLoopId; // requestAnimationFrame ID for drawing loop
+
+        const poopEmoji = '💩';
+        const alvaroEmoji = '🏃‍♂️'; // Running man emoji for Álvaro
+        const toiletEmoji = '🚽';
+        const alvaroName = 'Álvaro'; // Name to display below Álvaro
+
+        // Function to set toilet's new random direction
+        function setRandomToiletDirection() {
+            const directions = [-1, 0, 1];
+            toilet.dx = directions[Math.floor(Math.random() * directions.length)];
+            toilet.dy = directions[Math.floor(Math.random() * directions.length)];
+        }
+
+        // Moves Álvaro based on his current dx/dy and drops poop if countdown is zero
+        function moveAlvaro() {
+            if (gameOver) return;
+
+            // Store the exact previous position for poop placement
+            alvaro.lastX = alvaro.x;
+            alvaro.lastY = alvaro.y;
+
+            // Move Álvaro by one cell
+            alvaro.x += alvaro.dx;
+            alvaro.y += alvaro.dy;
+
+            // Keep Álvaro within bounds
+            alvaro.x = Math.max(0, Math.min(alvaro.x, boardSize - characterSize));
+            alvaro.y = Math.max(0, Math.min(alvaro.y, boardSize - characterSize));
+
+            // If Álvaro hits a boundary and tries to move further, stop his movement in that direction.
+            if ((alvaro.x === 0 && alvaro.dx < 0) || (alvaro.x === boardSize - characterSize && alvaro.dx > 0)) {
+                alvaro.dx = 0;
+            }
+            if ((alvaro.y === 0 && alvaro.dy < 0) || (alvaro.y === boardSize - characterSize && alvaro.dy > 0)) {
+                alvaro.dy = 0;
+            }
+
+            // If countdown is 0 and Álvaro is currently moving, Álvaro leaves poop emojis at the *just vacated* cell
+            if (countdown <= 0 && (alvaro.dx !== 0 || alvaro.dy !== 0)) {
+                // Calculate poop position to be centered on Álvaro's previous exact grid location
+                const poopX = alvaro.lastX + (characterSize - poopSize) / 2;
+                const poopY = alvaro.lastY + (characterSize - poopSize) / 2;
+                poops.push({ x: poopX, y: poopY });
+            }
+        }
+
+
+        // Initialize game
+        function initializeGame() {
+            alvaro.x = boardSize / 2 - characterSize / 2;
+            alvaro.y = boardSize / 2 - characterSize / 2;
+            alvaro.moveDelay = alvaro.baseMoveDelay; // Reset Álvaro's speed
+            alvaro.dx = cellSize; // Start Álvaro moving right by default
+            alvaro.dy = 0;
+            alvaro.lastX = alvaro.x; // Set initial last position
+            alvaro.lastY = alvaro.y;
+
+            toilet.x = Math.random() * (boardSize - toiletSize);
+            toilet.y = Math.random() * (boardSize - toiletSize);
+            toilet.speed = cellSize / 4; // Reset toilet speed
+
+            score = 0;
+            scoreDisplay.textContent = score;
+            countdown = 3;
+            countdownDisplay.textContent = countdown;
+            gameOver = false;
+            poops = []; // Poops are now persistent, but cleared on new game
+
+            gameMessage.style.display = 'none';
+            restartButton.style.display = 'none';
+            countdownDisplay.style.display = 'block';
+
+            // Clear existing intervals to prevent multiple running instances
+            clearInterval(toiletMoveInterval);
+            clearInterval(countdownInterval);
+            clearInterval(alvaroMoveIntervalId); // Clear Álvaro's movement interval
+            cancelAnimationFrame(gameLoopId); // Stop the animation loop
+
+            // Start new intervals
+            toiletMoveInterval = setInterval(moveToiletRandomly, 500); // Toilet changes direction every 0.5 seconds
+            countdownInterval = setInterval(updateCountdown, 1000); // Countdown updates every 1 second
+            alvaroMoveIntervalId = setInterval(moveAlvaro, alvaro.moveDelay); // Start Álvaro's movement
+
+            gameLoopId = requestAnimationFrame(gameLoop); // Start the drawing loop
+        }
+
+        // Draw everything on the canvas
+        function draw() {
+            ctx.clearRect(0, 0, boardSize, boardSize); // Clear the canvas
+
+            // Draw Álvaro
+            ctx.font = `${characterSize}px Arial`;
+            ctx.fillText(alvaroEmoji, alvaro.x, alvaro.y + characterSize * 0.85); // Adjust for emoji baseline
+
+            // Draw Álvaro's Name
+            ctx.font = `${cellSize * 0.8}px Inter`; // Smaller font for name
+            ctx.textAlign = 'center'; // Center the text
+            ctx.fillStyle = '#333'; // Dark color for text
+            ctx.fillText(alvaroName, alvaro.x + characterSize / 2, alvaro.y + characterSize + 10); // Position below Álvaro
+            ctx.textAlign = 'start'; // Reset text alignment
+
+            // Draw Toilet
+            ctx.font = `${toiletSize}px Arial`;
+            ctx.fillText(toiletEmoji, toilet.x, toilet.y + toiletSize * 0.85); // Adjust for emoji baseline
+
+            // Draw Poops
+            ctx.font = `${poopSize}px Arial`;
+            poops.forEach(p => {
+                ctx.fillText(poopEmoji, p.x, p.y + poopSize * 0.85); // Adjust for emoji baseline
+            });
+        }
+
+        // Update countdown
+        function updateCountdown() {
+            if (gameOver) return;
+
+            countdown--;
+            countdownDisplay.textContent = countdown;
+
+            if (countdown <= 0) {
+                // If countdown is zero, hide countdown display
+                countdownDisplay.style.display = 'none';
+            }
+        }
+
+        // Move toilet randomly
+        function moveToiletRandomly() {
+            if (gameOver) return;
+
+            // Move toilet based on its current direction
+            toilet.x += toilet.dx * toilet.speed;
+            toilet.y += toilet.dy * toilet.speed;
+
+            // Keep toilet within bounds and reverse direction if it hits a wall
+            if (toilet.x < 0 || toilet.x > boardSize - toiletSize) {
+                toilet.dx *= -1;
+                toilet.x = Math.max(0, Math.min(toilet.x, boardSize - toiletSize)); // Clamp to boundary
+                setRandomToiletDirection(); // Change direction again after hitting wall
+            }
+            if (toilet.y < 0 || toilet.y > boardSize - toiletSize) {
+                toilet.dy *= -1;
+                toilet.y = Math.max(0, Math.min(toilet.y, boardSize - toiletSize)); // Clamp to boundary
+                setRandomToiletDirection(); // Change direction again after hitting wall
+            }
+        }
+
+        // Update game state (primarily for collisions, drawing is separate)
+        function update() {
+            if (gameOver) return;
+
+            // Collision detection: Álvaro and Toilet
+            if (alvaro.x < toilet.x + toiletSize &&
+                alvaro.x + characterSize > toilet.x &&
+                alvaro.y < toilet.y + toiletSize &&
+                alvaro.y + characterSize > toilet.y) {
+                // Collision!
+                score++;
+                scoreDisplay.textContent = score;
+                countdown = 3; // Reset countdown
+                countdownDisplay.textContent = countdown;
+                countdownDisplay.style.display = 'block'; // Show countdown again
+                // poops = []; // REMOVED: Poops no longer disappear when toilet is caught
+
+                // Increase toilet speed (e.g., 10% faster per catch)
+                toilet.speed *= 1.1;
+
+                // Increase Álvaro's speed (reduce moveDelay)
+                alvaro.moveDelay = Math.max(alvaro.minMoveDelay, alvaro.moveDelay * 0.9);
+                clearInterval(alvaroMoveIntervalId); // Clear old interval
+                alvaroMoveIntervalId = setInterval(moveAlvaro, alvaro.moveDelay); // Start new interval with updated delay
+
+                // Teleport toilet to a new random position
+                toilet.x = Math.random() * (boardSize - toiletSize);
+                toilet.y = Math.random() * (boardSize - toiletSize);
+                setRandomToiletDirection(); // Set a new random direction for the teleported toilet
+            }
+
+            // Collision detection: Álvaro and Poop
+            for (let i = 0; i < poops.length; i++) {
+                const p = poops[i];
+                if (alvaro.x < p.x + poopSize &&
+                    alvaro.x + characterSize > p.x &&
+                    alvaro.y < p.y + poopSize &&
+                    alvaro.y + characterSize > p.y) {
+                    // Collision with poop! Game Over
+                    endGame("PIRIRI WINS");
+                    break;
+                }
+            }
+        }
+
+        // End game function
+        function endGame(message) {
+            gameOver = true;
+            clearInterval(toiletMoveInterval);
+            clearInterval(countdownInterval);
+            clearInterval(alvaroMoveIntervalId); // Stop Álvaro's movement interval
+            cancelAnimationFrame(gameLoopId); // Stop the drawing loop
+
+            gameMessage.textContent = message;
+            gameMessage.style.display = 'block';
+            restartButton.style.display = 'block';
+            countdownDisplay.style.display = 'none'; // Hide countdown at game over
+        }
+
+        // Main game loop (for drawing and general updates like collisions)
+        function gameLoop() {
+            update();
+            draw();
+            if (!gameOver) {
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Event listener for keyboard input
+        document.addEventListener('keydown', (e) => {
+            if (gameOver) return;
+
+            // Change direction based on key, prevent immediate 180-degree turn
+            // Álvaro's speed is cellSize per step
+            switch (e.key) {
+                case 'ArrowUp':
+                    if (alvaro.dy === cellSize) return; // Prevent turning 180 degrees
+                    alvaro.dy = -cellSize;
+                    alvaro.dx = 0;
+                    break;
+                case 'ArrowDown':
+                    if (alvaro.dy === -cellSize) return; // Prevent turning 180 degrees
+                    alvaro.dy = cellSize;
+                    alvaro.dx = 0;
+                    break;
+                case 'ArrowLeft':
+                    if (alvaro.dx === cellSize) return; // Prevent turning 180 degrees
+                    alvaro.dx = -cellSize;
+                    alvaro.dy = 0;
+                    break;
+                    case 'ArrowRight':
+                    if (alvaro.dx === -cellSize) return; // Prevent turning 180 degrees
+                    alvaro.dx = cellSize;
+                    alvaro.dy = 0;
+                    break;
+            }
+        });
+
+        // Restart button event listener
+        restartButton.addEventListener('click', initializeGame);
+
+        // Initial setup on window load
+        window.onload = function() {
+            initializeGame();
+            setRandomToiletDirection(); // Set initial direction for the toilet
+        };
+    </script>
+</body>
+</html>
