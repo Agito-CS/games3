@@ -19,7 +19,7 @@
             overflow: hidden; /* Prevent scrolling if canvas is slightly larger */
         }
 
-        .game-container {
+        .game-wrapper {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -28,6 +28,13 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
             padding: 20px;
             position: relative; /* For countdown positioning */
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%; /* Ensure it takes full width of wrapper */
         }
 
         canvas {
@@ -99,43 +106,107 @@
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
         }
 
-        /* Responsive adjustments */
+        /* Character Selection Screen */
+        .character-selection-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .character-selection-screen h2 {
+            font-size: 2.5rem;
+            color: #333;
+            margin-bottom: 25px;
+            font-weight: bold;
+        }
+
+        .character-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .character-button {
+            background-color: #f8f8f8;
+            border: 2px solid #ddd;
+            border-radius: 15px;
+            padding: 15px 10px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem; /* Emoji size */
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .character-button:hover {
+            background-color: #e6e6e6;
+            border-color: #b3b3b3;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .character-button span {
+            font-size: 1rem; /* Name size */
+            font-weight: 600;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        /* Responsive adjustments for character selection */
         @media (max-width: 768px) {
-            .game-container {
-                padding: 10px;
-                border-radius: 10px;
+            .character-selection-screen {
+                padding: 20px;
             }
-            canvas {
-                border-width: 3px;
-                border-radius: 10px;
+            .character-selection-screen h2 {
+                font-size: 2rem;
             }
-            .game-info {
-                font-size: 1rem;
-                margin-bottom: 10px;
+            .character-buttons {
+                grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+                gap: 15px;
             }
-            .countdown-display {
-                font-size: 5rem;
+            .character-button {
+                font-size: 2rem;
+                padding: 10px 5px;
             }
-            .game-message {
-                font-size: 2.5rem;
-                padding: 15px 30px;
-            }
-            .restart-button {
-                padding: 10px 20px;
-                font-size: 1rem;
+            .character-button span {
+                font-size: 0.9rem;
             }
         }
     </style>
 </head>
 <body>
-    <div class="game-container">
-        <div class="game-info">
-            <span>Vasos pegos: <span id="score">0</span></span>
+    <div class="game-wrapper">
+        <!-- Character Selection Screen -->
+        <div id="characterSelectionScreen" class="character-selection-screen">
+            <h2>Escolha seu Personagem</h2>
+            <div id="characterButtons" class="character-buttons">
+                <!-- Character buttons will be inserted here by JavaScript -->
+            </div>
         </div>
-        <canvas id="gameCanvas"></canvas>
-        <div id="countdown" class="countdown-display">3</div>
-        <div id="gameMessage" class="game-message"></div>
-        <button id="restartButton" class="restart-button">Jogar Novamente</button>
+
+        <!-- Main Game Container (initially hidden) -->
+        <div id="gameContainer" class="game-container" style="display: none;">
+            <div class="game-info">
+                <span>Vasos pegos: <span id="score">0</span></span>
+            </div>
+            <canvas id="gameCanvas"></canvas>
+            <div id="countdown" class="countdown-display">3</div>
+            <div id="gameMessage" class="game-message"></div>
+            <button id="restartButton" class="restart-button">Jogar Novamente</button>
+        </div>
     </div>
 
     <script>
@@ -149,6 +220,12 @@
         const gameMessage = document.getElementById('gameMessage');
         const restartButton = document.getElementById('restartButton');
 
+        // New elements for character selection
+        const gameContainer = document.getElementById('gameContainer');
+        const gameInfo = document.querySelector('.game-info'); // Select it here
+        const characterSelectionScreen = document.getElementById('characterSelectionScreen');
+        const characterButtonsContainer = document.getElementById('characterButtons');
+
         // Game settings
         const boardSize = 600; // Large board
         canvas.width = boardSize;
@@ -159,9 +236,25 @@
         const toiletSize = cellSize * 2; // Toilet size
         const poopSize = cellSize; // Poop emoji size, also equal to cell size
 
+        // Global character data with updated emojis and added Érico
+        const characterData = [
+            { name: 'Álvaro', emoji: '🏃‍♂️' },
+            { name: 'Guilherme', emoji: '🥁' }, // Bateria
+            { name: 'Franciela', emoji: '👷‍♀️' }, // Engenheira
+            { name: 'Pandora', emoji: '🐼' },
+            { name: 'Newton', emoji: '😐' }, // Cara de tédio
+            { name: 'Larissa', emoji: '🎾' }, // Raquete de paddle/tênis
+            { name: 'Érico', emoji: '👨‍🔬' } // Cientista
+        ];
+
+        const poopEmoji = '💩'; // Poop emoji remains constant
+        const toiletEmoji = '🚽'; // Toilet emoji remains constant
+
+        let selectedCharacter = null; // Will store the chosen character object { name, emoji }
+
         let alvaro = {
-            x: boardSize / 2 - characterSize / 2,
-            y: boardSize / 2 - characterSize / 2,
+            x: 0, // Initialized in startGame
+            y: 0, // Initialized in startGame
             dx: 0,
             dy: 0,
             baseMoveDelay: 250, // Initial delay in ms between Álvaro's steps (slower start)
@@ -172,8 +265,8 @@
         };
 
         let toilet = {
-            x: Math.random() * (boardSize - toiletSize),
-            y: Math.random() * (boardSize - toiletSize),
+            x: 0, // Initialized in startGame
+            y: 0, // Initialized in startGame
             dx: 0, // Direction x
             dy: 0, // Direction y
             speed: cellSize / 4 // Initial toilet speed, moves slower than Álvaro
@@ -188,10 +281,6 @@
         let alvaroMoveIntervalId; // Interval ID for Álvaro's continuous movement
         let gameLoopId; // requestAnimationFrame ID for drawing loop
 
-        const poopEmoji = '💩';
-        const alvaroEmoji = '🏃‍♂️'; // Running man emoji for Álvaro
-        const toiletEmoji = '🚽';
-        const alvaroName = 'Álvaro'; // Name to display below Álvaro
 
         // Function to set toilet's new random direction
         function setRandomToiletDirection() {
@@ -234,8 +323,60 @@
         }
 
 
-        // Initialize game
+        // Initialize game (sets up character selection)
         function initializeGame() {
+            gameOver = false;
+            score = 0;
+            scoreDisplay.textContent = score;
+            countdown = 3;
+            countdownDisplay.textContent = countdown;
+            poops = [];
+
+            gameMessage.style.display = 'none';
+            restartButton.style.display = 'none';
+            countdownDisplay.style.display = 'none'; // Hide countdown initially
+
+            // Hide main game container, show character selection
+            gameContainer.style.display = 'none';
+            characterSelectionScreen.style.display = 'flex'; // Show the selection screen
+
+            // Clear existing intervals to prevent multiple running instances
+            clearInterval(toiletMoveInterval);
+            clearInterval(countdownInterval);
+            clearInterval(alvaroMoveIntervalId);
+            cancelAnimationFrame(gameLoopId);
+
+            displayCharacterSelection(); // Populate and display character buttons
+        }
+
+        // Function to populate and display character selection
+        function displayCharacterSelection() {
+            characterButtonsContainer.innerHTML = ''; // Clear previous buttons
+            characterData.forEach(char => {
+                const button = document.createElement('button');
+                button.className = 'character-button';
+                button.innerHTML = `${char.emoji}<br/><span>${char.name}</span>`;
+                button.addEventListener('click', () => selectCharacter(char));
+                characterButtonsContainer.appendChild(button);
+            });
+        }
+
+        // Function to handle character selection and start the game
+        function selectCharacter(char) {
+            selectedCharacter = char; // Set the chosen character
+            startGame(); // Start the actual game
+        }
+
+        // Function to start the actual game after character selection
+        function startGame() {
+            // Hide character selection, show main game container
+            characterSelectionScreen.style.display = 'none';
+            gameContainer.style.display = 'flex'; // Show the game container
+            canvas.style.display = 'block'; // Make sure canvas is visible
+            gameInfo.style.display = 'flex'; // Make sure game info is visible
+            countdownDisplay.style.display = 'block'; // Show countdown now
+
+            // Set Álvaro's initial state
             alvaro.x = boardSize / 2 - characterSize / 2;
             alvaro.y = boardSize / 2 - characterSize / 2;
             alvaro.moveDelay = alvaro.baseMoveDelay; // Reset Álvaro's speed
@@ -244,26 +385,10 @@
             alvaro.lastX = alvaro.x; // Set initial last position
             alvaro.lastY = alvaro.y;
 
+            // Set toilet's initial state
             toilet.x = Math.random() * (boardSize - toiletSize);
             toilet.y = Math.random() * (boardSize - toiletSize);
             toilet.speed = cellSize / 4; // Reset toilet speed
-
-            score = 0;
-            scoreDisplay.textContent = score;
-            countdown = 3;
-            countdownDisplay.textContent = countdown;
-            gameOver = false;
-            poops = []; // Poops are now persistent, but cleared on new game
-
-            gameMessage.style.display = 'none';
-            restartButton.style.display = 'none';
-            countdownDisplay.style.display = 'block';
-
-            // Clear existing intervals to prevent multiple running instances
-            clearInterval(toiletMoveInterval);
-            clearInterval(countdownInterval);
-            clearInterval(alvaroMoveIntervalId); // Clear Álvaro's movement interval
-            cancelAnimationFrame(gameLoopId); // Stop the animation loop
 
             // Start new intervals
             toiletMoveInterval = setInterval(moveToiletRandomly, 500); // Toilet changes direction every 0.5 seconds
@@ -277,16 +402,20 @@
         function draw() {
             ctx.clearRect(0, 0, boardSize, boardSize); // Clear the canvas
 
-            // Draw Álvaro
-            ctx.font = `${characterSize}px Arial`;
-            ctx.fillText(alvaroEmoji, alvaro.x, alvaro.y + characterSize * 0.85); // Adjust for emoji baseline
+            if (selectedCharacter) {
+                // Draw Character Emoji
+                ctx.font = `${characterSize}px Arial`;
+                ctx.fillText(selectedCharacter.emoji, alvaro.x, alvaro.y + characterSize * 0.85); // Adjust for emoji baseline
 
-            // Draw Álvaro's Name
-            ctx.font = `${cellSize * 0.8}px Inter`; // Smaller font for name
-            ctx.textAlign = 'center'; // Center the text
-            ctx.fillStyle = '#333'; // Dark color for text
-            ctx.fillText(alvaroName, alvaro.x + characterSize / 2, alvaro.y + characterSize + 10); // Position below Álvaro
-            ctx.textAlign = 'start'; // Reset text alignment
+                // Draw Character's Name
+                ctx.font = `${cellSize * 0.8}px Inter`; // Smaller font for name
+                ctx.textAlign = 'center'; // Center the text
+                ctx.fillStyle = '#333'; // Dark color for text
+                // Position name below character, adjusted by half of character width for centering
+                ctx.fillText(selectedCharacter.name, alvaro.x + characterSize / 2, alvaro.y + characterSize + 10);
+                ctx.textAlign = 'start'; // Reset text alignment for other drawings
+            }
+
 
             // Draw Toilet
             ctx.font = `${toiletSize}px Arial`;
@@ -348,7 +477,7 @@
                 countdown = 3; // Reset countdown
                 countdownDisplay.textContent = countdown;
                 countdownDisplay.style.display = 'block'; // Show countdown again
-                // poops = []; // REMOVED: Poops no longer disappear when toilet is caught
+                // poops = []; // Poops no longer disappear when toilet is caught
 
                 // Increase toilet speed (e.g., 10% faster per catch)
                 toilet.speed *= 1.1;
@@ -423,7 +552,7 @@
                     alvaro.dx = -cellSize;
                     alvaro.dy = 0;
                     break;
-                    case 'ArrowRight':
+                case 'ArrowRight':
                     if (alvaro.dx === -cellSize) return; // Prevent turning 180 degrees
                     alvaro.dx = cellSize;
                     alvaro.dy = 0;
@@ -431,13 +560,13 @@
             }
         });
 
-        // Restart button event listener
+        // Restart button event listener: goes back to character selection
         restartButton.addEventListener('click', initializeGame);
 
-        // Initial setup on window load
+        // Initial setup on window load: starts the character selection process
         window.onload = function() {
             initializeGame();
-            setRandomToiletDirection(); // Set initial direction for the toilet
+            setRandomToiletDirection(); // Set initial direction for the toilet (toilet data is always present)
         };
     </script>
 </body>
